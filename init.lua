@@ -1,4 +1,4 @@
-print("Better get to coding faggot")
+print("Better get to coding")
 
 vim.g.mapleader = " "
 
