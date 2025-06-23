@@ -23,11 +23,16 @@ if not vim.loop.fs_stat(lazypath) then
   })
 end
 vim.opt.rtp:prepend(lazypath)
+vim.opt.clipboard = "unnamedplus"
 
 -- Plugins with lazy.nvim
 require("lazy").setup({
   -- Core dependencies
   { "nvim-lua/plenary.nvim" },
+  {
+    "nvim-treesitter/nvim-treesitter",
+    opts = { ensure_installed = { "go", "gomod", "gowork", "gosum" } },
+  },
   {
     'bettervim/yugen.nvim',
     config = function()
@@ -41,27 +46,55 @@ require("lazy").setup({
       local lspconfig = require("lspconfig")
       local capabilities = require("cmp_nvim_lsp").default_capabilities()
 
-      -- clangd for C++
+      -- Common `on_attach` function for all LSP servers
+      local on_attach = function(client, bufnr)
+        local buf_map = function(mode, lhs, rhs, opts)
+          opts = vim.tbl_extend("force", { noremap = true, silent = true }, opts or {})
+          vim.api.nvim_buf_set_keymap(bufnr, mode, lhs, rhs, opts)
+        end
+
+        -- LSP keybindings
+        buf_map("n", "gd", "<cmd>lua vim.lsp.buf.definition()<CR>")
+        buf_map("n", "K", "<cmd>lua vim.lsp.buf.hover()<CR>")
+        buf_map("n", "<leader>rn", "<cmd>lua vim.lsp.buf.rename()<CR>")
+        buf_map("n", "<leader>ca", "<cmd>lua vim.lsp.buf.code_action()<CR>")
+        buf_map("n", "[d", "<cmd>lua vim.diagnostic.goto_prev()<CR>")
+        buf_map("n", "]d", "<cmd>lua vim.diagnostic.goto_next()<CR>")
+
+        -- Autoformat on save (if supported by the LSP server)
+        if client.server_capabilities.documentFormattingProvider then
+          vim.api.nvim_create_autocmd("BufWritePre", {
+            buffer = bufnr,
+            callback = function()
+              vim.lsp.buf.format({ async = false })
+            end,
+          })
+        end
+      end
+
+      -- Configuration for C++ (`clangd`)
       lspconfig.clangd.setup({
         capabilities = capabilities,
-        on_attach = function(client, bufnr)
-          local buf_map = function(mode, lhs, rhs, opts)
-            opts = vim.tbl_extend("force", { noremap = true, silent = true }, opts or {})
-            vim.api.nvim_buf_set_keymap(bufnr, mode, lhs, rhs, opts)
-          end
+        on_attach = on_attach,
+      })
 
-          -- LSP keybindings
-          buf_map("n", "gd", "<cmd>lua vim.lsp.buf.definition()<CR>")
-          buf_map("n", "K", "<cmd>lua vim.lsp.buf.hover()<CR>")
-          buf_map("n", "<leader>rn", "<cmd>lua vim.lsp.buf.rename()<CR>")
-          buf_map("n", "<leader>ca", "<cmd>lua vim.lsp.buf.code_action()<CR>")
-          buf_map("n", "[d", "<cmd>lua vim.diagnostic.goto_prev()<CR>")
-          buf_map("n", "]d", "<cmd>lua vim.diagnostic.goto_next()<CR>")
-        end,
+      -- Configuration for Go (`gopls`)
+      lspconfig.gopls.setup({
+        capabilities = capabilities,
+        on_attach = on_attach,
+        settings = {
+          gopls = {
+            gofumpt = true, -- Use `gofumpt` for formatting
+            staticcheck = true, -- Enable additional checks
+            analyses = {
+              unusedparams = true, -- Warn about unused parameters
+            },
+          },
+        },
       })
     end,
   },
-  -- Autocompletion
+-- Autocompletion
   {
     "hrsh7th/nvim-cmp",
     dependencies = {
@@ -89,9 +122,21 @@ require("lazy").setup({
       require("telescope").setup()
     end,
   },
+  {
+    "crispgm/nvim-go",
+    config = function()
+      require("go").setup({
+        lint_prompt_style = "float", -- Show lint errors in a floating window
+      })
+    end,
+  },
 })
 
 -- Keybindings for convenience
 vim.api.nvim_set_keymap('n', '<leader>ff', ':Telescope find_files<CR>', { noremap = true, silent = true })
 vim.api.nvim_set_keymap('n', '<leader>fg', ':Telescope live_grep<CR>', { noremap = true, silent = true })
-
+vim.api.nvim_set_keymap('n', '<leader>y', '"+y', { noremap = true, silent = true }) -- Yank selected text to clipboard
+vim.api.nvim_set_keymap('v', '<leader>y', '"+y', { noremap = true, silent = true }) -- Yank visual selection to clipboard
+vim.api.nvim_set_keymap('n', '<leader>Y', 'gg"+yG', { noremap = true, silent = true }) -- Yank entire file to clipboard
+vim.api.nvim_set_keymap('n', '<leader>fs', ':Telescope lsp_document_symbols<CR>', { noremap = true, silent = true })
+vim.api.nvim_set_keymap('n', '<leader>ff', ':Telescope find_files<CR>', { noremap = true, silent = true })
